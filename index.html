@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mit Server verbinden</title>
+<style>
+  /* Plain black on white, big type, no grey: renders cleanly on e-ink. */
+  body { font-family: sans-serif; font-size: 20px; margin: 16px; background: #fff; color: #000; }
+  h1 { font-size: 26px; margin: 0 0 8px; }
+  p { margin: 8px 0 16px; }
+  label { display: block; font-weight: bold; margin-top: 16px; }
+  input[type=text] { font-size: 24px; width: 100%; box-sizing: border-box; -webkit-box-sizing: border-box;
+    padding: 10px; border: 2px solid #000; border-radius: 0; background: #fff; color: #000; }
+  .suggest { border: 2px solid #000; border-top: 0; display: none; }
+  .suggest div { font-size: 22px; padding: 12px 10px; border-top: 1px solid #000; }
+  .suggest div:first-child { border-top: 0; }
+  button { font-size: 22px; padding: 12px 20px; margin-top: 20px; border: 2px solid #000; background: #fff; color: #000; }
+  #connect { font-weight: bold; width: 100%; }
+  /* Red is grey on e-ink, so the error also gets a thick border and a symbol. */
+  #error { display: none; color: #c00; font-weight: bold; border: 3px solid #c00; padding: 10px; margin: 12px 0; }
+  #scanning { display: none; text-align: center; margin-top: 40px; }
+  .spinner { width: 48px; height: 48px; margin: 0 auto 20px; border: 6px solid #000; border-top-color: #fff;
+    border-radius: 50%; -webkit-animation: spin 1.2s linear infinite; animation: spin 1.2s linear infinite; }
+  @-webkit-keyframes spin { to { -webkit-transform: rotate(360deg); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #version { font-size: 14px; margin-top: 32px; }
+</style>
+</head>
+<body>
+
+<div id="entry">
+  <h1>Mit Server verbinden</h1>
+  <p>Gib die zwei Wörter ein, die die App auf dem iPhone anzeigt.</p>
+  <div id="error"></div>
+  <form id="form" action="#" autocomplete="off">
+    <label for="word1">Erstes Wort</label>
+    <input type="text" id="word1" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+    <div class="suggest" id="suggest1"></div>
+    <label for="word2">Zweites Wort</label>
+    <input type="text" id="word2" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+    <div class="suggest" id="suggest2"></div>
+    <button type="submit" id="connect">Verbinden</button>
+  </form>
+</div>
+
+<div id="scanning">
+  <div class="spinner"></div>
+  <div id="scanText">Verbinden ...</div>
+  <button type="button" id="cancel">Abbrechen</button>
+</div>
+
+<div id="version"></div>
+
+<script>
+// ES5 only: the tolino's browser is old.
+(function () {
+  var VERSION = "seeker v2";
+  var PORT = "";                 // e.g. ":8080"; "" for port 80
+  var PING_PATH = "/ping.gif";
+  var PROBE_TIMEOUT_MS = 3000;   // one attempt
+  var RETRY_PAUSE_MS = 1000;     // pause between attempts
+  var TOTAL_TIMEOUT_MS = 12000;  // give up after this, back to word entry
+  var MAX_SUGGESTIONS = 5;
+  var STORAGE_KEY = "seeker.code";
+
+  // Generated from ServerCode.swift. Never edit by hand: the app and this
+  // page must use the identical list, in the identical order.
+  var WORDS = ["acryl", "adler", "album", "alpha", "amigo", "april", "arena", "aroma", "atlas", "auto", "avocado", "baby", "bagel", "banjo", "baron", "basis", "bingo", "bison", "blues", "bonus", "boss", "boxer", "brunch", "budget", "buggy", "burger", "bus", "cafe", "camping", "canyon", "cello", "chaos", "chef", "chip", "city", "clown", "cobra", "comic", "cowboy", "curry", "cyber", "delta", "demo", "design", "diesel", "dino", "disco", "dollar", "domino", "donut", "drama", "dynamo", "echo", "elite", "email", "emoji", "enzym", "epos", "espresso", "euro", "event", "extra", "fabel", "farm", "fiesta", "film", "finger", "fitness", "flamingo", "flora", "format", "foyer", "frost", "fusion", "gala", "garage", "gecko", "genie", "giraffe", "global", "gold", "gong", "gorilla", "granit", "grill", "guru", "hamster", "harmonie", "hawaii", "hektar", "helium", "hobby", "hockey", "horizont", "hotel", "humor", "hybrid", "hymne", "ibis", "idol", "igel", "iglu", "ikone", "impuls", "index", "intro", "iris", "ironie", "jacke", "jaguar", "januar", "jazz", "jeans", "jet", "jockey", "jojo", "joker", "judo", "juli", "jumbo", "juni", "jury", "kabel", "kaffee", "kajak", "kaktus", "kamel", "kanal", "katze", "kebab", "keks", "kerze", "ketchup", "kino", "kiosk", "kiwi", "klavier", "klima", "knopf", "koala", "komet", "konzert", "kosmos", "krabbe", "krokodil", "kuchen", "kugel", "kunst", "kurve", "labor", "lagune", "lampe", "laser", "lava", "lemur", "lexikon", "lift", "lila", "limo", "linie", "lizenz", "lobby", "logo", "lotus", "lupe", "luxus", "lyrik", "magnet", "mango", "marmor", "maske", "matrix", "medaille", "melone", "menu", "meteor", "minze", "mixer", "mobil", "modem", "mokka", "monster", "mosaik", "motor", "mumie", "musik", "mythos", "nagel", "nano", "natur", "nebel", "nektar", "neon", "nest", "ninja", "nixe", "nobel", "nomade", "notiz", "nougat", "nylon", "oase", "obelisk", "ofen", "okapi", "oktober", "olive", "omega", "onkel", "opal", "optik", "orange", "orbit", "orkan", "otter", "oval", "ozean", "paddel", "pagode", "paket", "palme", "panda", "party", "pasta", "pedal", "pelikan", "perle", "piano", "picknick", "pilot", "pinguin", "pixel", "pizza", "planet", "pluto", "polar", "pommes", "pony", "popcorn", "posaune", "prinz", "profi", "pudel", "puls", "puma", "puppe", "puzzle", "pyramide", "quark", "quelle", "quiz", "rabe", "radio", "rakete", "rallye", "reflex", "regen", "rekord", "rentier", "retro", "rhythmus", "ritter", "rodeo", "rolle", "rose", "rubin", "ruder", "rugby", "safari", "salat", "samba", "sardine", "satellit", "sauna", "saxofon", "scooter", "segel", "senf", "signal", "silber", "sirup", "slalom", "smaragd", "snack", "socke", "sofa", "solar", "sommer", "sonne", "sport", "sushi", "swing", "symbol", "tabelle", "taco", "tafel", "taifun", "talent", "tango", "tapir", "taxi", "team", "teddy", "tempo", "tennis", "terrasse", "theater", "thron", "tiger", "tinte", "toast", "tofu", "tomate", "topas", "torte", "tour", "traktor", "trio", "tuba", "tulpe", "tunnel", "turbo", "twist", "ufo", "uhr", "ukulele", "ulme", "ultra", "uniform", "urlaub", "utopie", "vakuum", "vampir", "vanille", "vase", "vektor", "velo", "venus", "video", "villa", "vinyl", "visum", "vitamin", "vogel", "vokal", "vulkan", "waffel", "wal", "wasser", "welle", "wespe", "wiese", "wiki", "wolke", "wombat", "wunder", "wurst", "xylofon", "yacht", "yeti", "yoga", "zauber", "zebra", "zelt", "zeppelin", "ziege", "zimt", "zirkus", "zitrone", "zoo", "zucker"];
+  var EXTRA_SUBNETS = [[172, 20, 10], [10, 0, 0], [10, 0, 1], [10, 1, 1], [10, 1, 10], [10, 10, 10], [10, 42, 0], [172, 16, 0], [172, 16, 1]];
+
+  // ---- Elements ---------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+  var entryEl = $("entry"), scanningEl = $("scanning"), errorEl = $("error");
+  var word1 = $("word1"), word2 = $("word2");
+  $("version").textContent = VERSION;
+
+  // ---- Storage (local storage; unavailable in some contexts) -----------
+  function storageGet() {
+    try { return window.localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+  }
+  function storageSet(value) {
+    try { window.localStorage.setItem(STORAGE_KEY, value); } catch (e) {}
+  }
+  function storageClear() {
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+
+  // ---- Decoding (same rules as ServerCode.decode in Swift) --------------
+  // A token matches a full word or a prefix of at least three letters.
+  function wordIndex(token) {
+    token = token.toLowerCase().replace(/[^a-z]/g, "");
+    if (token.length < 3) { return -1; }
+    for (var i = 0; i < WORDS.length; i++) {
+      if (WORDS[i].indexOf(token) === 0) { return i; }
+    }
+    return -1;
+  }
+  function isIPv4(s) {
+    var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+    if (!m) { return false; }
+    for (var i = 1; i <= 4; i++) { if (parseInt(m[i], 10) > 255) { return false; } }
+    return true;
+  }
+  // Returns { ip: "..." } or { error: "..." }.
+  function decode(a, b) {
+    a = a.replace(/^\s+|\s+$/g, "");
+    b = b.replace(/^\s+|\s+$/g, "");
+    // Fallback: the app shows a plain IP for unknown subnets.
+    if (isIPv4(a) && b === "") { return { ip: a }; }
+    if (a === "" || b === "") { return { error: "Bitte beide Wörter eingeben." }; }
+    var s = wordIndex(a), h = wordIndex(b);
+    if (s < 0) { return { error: "„" + a + "“ ist kein bekanntes Wort." }; }
+    if (h < 0) { return { error: "„" + b + "“ ist kein bekanntes Wort." }; }
+    if (h < 1 || h > 254) { return { error: "„" + WORDS[h] + "“ passt nicht als zweites Wort." }; }
+    var subnet;
+    if (s < 256) { subnet = "192.168." + s; }
+    else if (s - 256 < EXTRA_SUBNETS.length) { subnet = EXTRA_SUBNETS[s - 256].join("."); }
+    else { return { error: "„" + WORDS[s] + "“ passt nicht als erstes Wort." }; }
+    return { ip: subnet + "." + h };
+  }
+
+  // ---- Autocomplete -----------------------------------------------------
+  function setupAutocomplete(input, box, next) {
+    function hide() { box.style.display = "none"; box.innerHTML = ""; }
+    function update() {
+      var typed = input.value.toLowerCase().replace(/[^a-z]/g, "");
+      hide();
+      if (typed.length === 0) { return; }
+      var matches = [];
+      for (var i = 0; i < WORDS.length && matches.length < MAX_SUGGESTIONS; i++) {
+        if (WORDS[i].indexOf(typed) === 0) { matches.push(WORDS[i]); }
+      }
+      // Nothing to suggest, or the word is already complete.
+      if (matches.length === 0 || (matches.length === 1 && matches[0] === typed)) { return; }
+      for (var j = 0; j < matches.length; j++) { box.appendChild(item(matches[j])); }
+      box.style.display = "block";
+    }
+    function item(word) {
+      var div = document.createElement("div");
+      div.textContent = word;
+      div.onclick = function () {
+        input.value = word;
+        hide();
+        if (next) { next.focus(); } else { input.blur(); } // blur hides the keyboard
+      };
+      return div;
+    }
+    input.addEventListener("input", update, false);
+    input.addEventListener("keyup", update, false); // old browsers may not fire "input"
+    input.addEventListener("keydown", function (e) {
+      // Enter in the first field moves on instead of submitting.
+      if (next && (e.keyCode === 13)) { e.preventDefault(); hide(); next.focus(); }
+    }, false);
+    return hide;
+  }
+  var hide1 = setupAutocomplete(word1, $("suggest1"), word2);
+  var hide2 = setupAutocomplete(word2, $("suggest2"), null);
+
+  // ---- Modes ------------------------------------------------------------
+  var attemptId = 0;
+
+  function showError(msg) {
+    errorEl.textContent = "⚠ " + msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+  function entryMode(errorMsg) {
+    attemptId++; // stop any running attempt
+    scanningEl.style.display = "none";
+    entryEl.style.display = "block";
+    showError(errorMsg || "");
+  }
+  function scanningMode(code, ip) {
+    hide1(); hide2();
+    word1.blur(); word2.blur();
+    entryEl.style.display = "none";
+    scanningEl.style.display = "block";
+    $("scanText").textContent = "Verbinden (Code: " + code + ") ...";
+    connect(code, ip);
+  }
+
+  // ---- Reachability check -----------------------------------------------
+  function probe(ip, callback) {
+    var img = new Image(), done = false;
+    var timer = setTimeout(function () { finish(false); }, PROBE_TIMEOUT_MS);
+    function finish(ok) {
+      if (done) { return; }
+      done = true;
+      clearTimeout(timer);
+      img.onload = img.onerror = null;
+      if (!ok) { img.src = ""; }
+      callback(ok);
+    }
+    img.onload = function () { finish(true); };
+    img.onerror = function () { finish(false); };
+    // Random query string so a cached image can't fake a reachable server.
+    img.src = "http://" + ip + PORT + PING_PATH + "?r=" + Math.random().toString(36).slice(2);
+  }
+
+  // Keeps trying until TOTAL_TIMEOUT_MS: the app may still be starting up.
+  function connect(code, ip) {
+    var myAttempt = ++attemptId;
+    var start = new Date().getTime();
+    function attempt() {
+      probe(ip, function (ok) {
+        if (myAttempt !== attemptId) { return; } // cancelled
+        if (ok) {
+          storageSet(code);
+          window.location.href = "http://" + ip + PORT + "/";
+          return;
+        }
+        if (new Date().getTime() - start + RETRY_PAUSE_MS < TOTAL_TIMEOUT_MS) {
+          setTimeout(function () { if (myAttempt === attemptId) { attempt(); } }, RETRY_PAUSE_MS);
+        } else {
+          entryMode("Keine Verbindung. Prüfe die beiden Wörter, ob Gerät und Server im selben WLAN sind und ob die App geöffnet ist.");
+        }
+      });
+    }
+    attempt();
+  }
+
+  // ---- Wiring -----------------------------------------------------------
+  function submit(a, b) {
+    var result = decode(a, b);
+    if (result.error) { entryMode(result.error); return; }
+    var code = isIPv4(a.replace(/\s/g, "")) && !b.replace(/\s/g, "") ? result.ip
+             : WORDS[wordIndex(a)] + " " + WORDS[wordIndex(b)];
+    word1.value = isIPv4(code) ? code : WORDS[wordIndex(a)];
+    word2.value = isIPv4(code) ? "" : WORDS[wordIndex(b)];
+    scanningMode(code, result.ip);
+  }
+
+  $("form").onsubmit = function (e) {
+    if (e && e.preventDefault) { e.preventDefault(); }
+    submit(word1.value, word2.value);
+    return false;
+  };
+  $("cancel").onclick = function () { entryMode(""); };
+
+  // ?reset (or ?reset=true) forgets the saved code, e.g. to connect to
+  // another server on the same network. The parameter is then removed from
+  // the address, so a reload doesn't reset again.
+  if (/[?&]reset(=|&|$)/.test(window.location.search) && !/[?&]reset=(false|0)(&|$)/.test(window.location.search)) {
+    storageClear();
+    try { window.history.replaceState(null, "", window.location.pathname); } catch (e) {}
+  }
+
+  // On launch: a stored code connects right away.
+  var stored = storageGet();
+  if (stored) {
+    var parts = stored.split(" ");
+    submit(parts[0] || "", parts[1] || "");
+  } else {
+    entryMode("");
+  }
+})();
+</script>
+</body>
+</html>

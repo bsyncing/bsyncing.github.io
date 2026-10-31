@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mit Server verbinden</title>
+<title>Server verbinden</title>
 <style>
   /* Plain black on white, big type, no grey: renders cleanly on e-ink. */
   body { font-family: sans-serif; font-size: 20px; margin: 16px; background: #fff; color: #000; }
@@ -25,12 +25,17 @@
   @-webkit-keyframes spin { to { -webkit-transform: rotate(360deg); } }
   @keyframes spin { to { transform: rotate(360deg); } }
   #version { font-size: 14px; margin-top: 32px; }
+  #bookmark { display: none; margin-top: 24px; }
+  #bookmark .tip { border: 2px solid #000; padding: 12px; margin: 16px 0; }
+  #continue { font-weight: bold; width: 100%; text-align: center; text-decoration: none; display: block;
+    box-sizing: border-box; -webkit-box-sizing: border-box; font-size: 22px; padding: 12px 20px;
+    border: 2px solid #000; color: #000; }
 </style>
 </head>
 <body>
 
 <div id="entry">
-  <h1>Mit Server verbinden</h1>
+  <h1>Server verbinden</h1>
   <p>Gib die zwei Wörter ein, die die App auf dem iPhone anzeigt.</p>
   <div id="error"></div>
   <form id="form" action="#" autocomplete="off">
@@ -50,12 +55,18 @@
   <button type="button" id="cancel">Abbrechen</button>
 </div>
 
+<div id="bookmark">
+  <h1>Verbunden!</h1>
+  <div class="tip"><b>Tipp:</b> Setze jetzt im Browser-Menü ein Lesezeichen auf diese Seite. Beim nächsten Mal verbindet sie sich automatisch, auch in einem anderen WLAN.</div>
+  <a id="continue" href="#">Weiter</a>
+</div>
+
 <div id="version"></div>
 
 <script>
 // ES5 only: the browser is old.
 (function () {
-  var VERSION = "seeker v2";
+  var VERSION = "seeker v3";
   var PORT = "";                 // e.g. ":8080"; "" for port 80
   var PING_PATH = "/ping.gif";
   var PROBE_TIMEOUT_MS = 3000;   // one attempt
@@ -63,6 +74,7 @@
   var TOTAL_TIMEOUT_MS = 12000;  // give up after this, back to word entry
   var MAX_SUGGESTIONS = 5;
   var STORAGE_KEY = "seeker.code";
+  var HINT_KEY = "seeker.bookmarkHintShown"; // not cleared by ?reset
 
   // Generated from ServerCode.swift. Never edit by hand: the app and this
   // page must use the identical list, in the identical order.
@@ -84,6 +96,12 @@
   }
   function storageClear() {
     try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+  function hintShown() {
+    try { return window.localStorage.getItem(HINT_KEY) === "1"; } catch (e) { return true; }
+  }
+  function markHintShown() {
+    try { window.localStorage.setItem(HINT_KEY, "1"); } catch (e) {}
   }
 
   // ---- Decoding (same rules as ServerCode.decode in Swift) --------------
@@ -206,7 +224,16 @@
         if (myAttempt !== attemptId) { return; } // cancelled
         if (ok) {
           storageSet(code);
-          window.location.href = "http://" + ip + PORT + "/";
+          var target = "http://" + ip + PORT + "/";
+          if (hintShown()) {
+            window.location.href = target;
+          } else {
+            // First connection on this device: pause once for the bookmark tip.
+            markHintShown();
+            scanningEl.style.display = "none";
+            $("continue").href = target;
+            $("bookmark").style.display = "block";
+          }
           return;
         }
         if (new Date().getTime() - start + RETRY_PAUSE_MS < TOTAL_TIMEOUT_MS) {
